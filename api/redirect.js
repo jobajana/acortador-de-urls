@@ -1,35 +1,33 @@
-import { kv } from '@vercel/kv';
-import { NextRequest, NextResponse } from 'next/server';
-
-export const config = {
-  runtime: 'edge',
-};
-
-export default async function handler(request) {
-  try {
-    const slug = request.nextUrl.searchParams.get('slug');
+    import { kv } from '@vercel/kv';
     
-    if (!slug) {
-      return new NextResponse(null, { status: 400, statusText: 'Bad Request: Slug is missing.' });
+    export default async function handler(request, response) {
+      try {
+        // Obtenemos el ID corto de la URL (ej: /abcde)
+        const { slug } = request.query;
+    
+        if (!slug) {
+          return response.status(400).json({ error: 'El ID corto es requerido.' });
+        }
+    
+        // Buscamos el enlace en la base de datos
+        const link = await kv.hgetall(`link:${slug}`);
+    
+        // Si no se encuentra, redirigimos a la página principal
+        if (!link || !link.originalUrl) {
+           return response.redirect(307, '/');
+        }
+        
+        // Incrementamos el contador de clics
+        await kv.hincrby(`link:${slug}`, 'clicks', 1);
+    
+        // Redirigimos al usuario a la URL original
+        return response.redirect(301, link.originalUrl);
+    
+      } catch (error) {
+        console.error(error);
+        // Si algo falla, también redirigimos a la página principal
+        return response.redirect(307, '/');
+      }
     }
-
-    const link = await kv.hgetall(`link:${slug}`);
     
-    if (!link || !link.originalUrl) {
-       // Si no se encuentra el enlace, redirigir a la página principal
-       const homeUrl = new URL('/', request.url);
-       return NextResponse.redirect(homeUrl, 307);
-    }
-    
-    // Incrementar el contador de clics de forma atómica
-    await kv.hincrby(`link:${slug}`, 'clicks', 1);
 
-    // Redirigir al usuario a la URL original
-    return NextResponse.redirect(link.originalUrl, 301);
-
-  } catch (error) {
-    console.error(error);
-    const homeUrl = new URL('/', request.url);
-    return NextResponse.redirect(homeUrl, 307);
-  }
-}
