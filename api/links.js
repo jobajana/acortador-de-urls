@@ -1,7 +1,6 @@
-import { kv } from '@vercel/kv';
+const { kv } = require('@vercel/kv');
 
-export default async function handler(request, response) {
-    // Manejar petición GET para listar todos los enlaces
+module.exports = async function handler(request, response) {
     if (request.method === 'GET') {
         try {
             const linkIds = await kv.zrange('links_by_date', 0, -1, { rev: true });
@@ -19,7 +18,6 @@ export default async function handler(request, response) {
         }
     }
 
-    // Manejar petición POST para crear un nuevo enlace
     if (request.method === 'POST') {
         const { url } = request.body;
         if (!url) {
@@ -29,7 +27,6 @@ export default async function handler(request, response) {
             const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
             let id;
             let exists = true;
-            // Asegurarse de que el ID es único
             while(exists) {
                 id = '';
                 for (let i = 0; i < 5; i++) {
@@ -41,17 +38,3 @@ export default async function handler(request, response) {
             const newLink = { id, originalUrl: url, clicks: 0, createdAt: Date.now() };
             
             await kv.hset(`link:${id}`, newLink);
-            // Guardar en un set ordenado por fecha para fácil recuperación
-            await kv.zadd('links_by_date', { score: newLink.createdAt, member: id });
-
-            return response.status(200).json({ id: newLink.id });
-        } catch (error) {
-            console.error(error);
-            return response.status(500).json({ error: 'Error al crear el enlace.' });
-        }
-    }
-
-    // Si el método no es GET o POST
-    return response.status(405).json({ error: 'Método no permitido.' });
-}
-
