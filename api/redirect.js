@@ -1,6 +1,6 @@
-import { kv } from '@vercel/kv';
+const { kv } = require('@vercel/kv');
 
-export default async function handler(request, response) {
+module.exports = async function handler(request, response) {
   try {
     const { slug } = request.query;
 
