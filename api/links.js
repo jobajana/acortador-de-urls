@@ -1,6 +1,10 @@
 import { kv } from '@vercel/kv';
+import { NextRequest, NextResponse } from 'next/server';
 
-// Genera un ID corto de 5 caracteres
+export const config = {
+  runtime: 'edge',
+};
+
 function generateShortId() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     let id = '';
@@ -10,57 +14,52 @@ function generateShortId() {
     return id;
 }
 
-export default async function handler(request, response) {
+export default async function handler(request) {
     // Manejar petición GET para listar todos los enlaces
     if (request.method === 'GET') {
         try {
             const linkIds = await kv.zrange('links_by_date', 0, -1, { rev: true });
-            if (linkIds.length === 0) {
-                return response.status(200).json({ links: [] });
+            if (!linkIds || linkIds.length === 0) {
+                return NextResponse.json({ links: [] });
             }
             const pipeline = kv.pipeline();
             linkIds.forEach(id => pipeline.hgetall(`link:${id}`));
             const links = await pipeline.exec();
             
-            return response.status(200).json({ links });
+            return NextResponse.json({ links });
         } catch (error) {
-            return response.status(500).json({ error: 'Error al obtener los enlaces.' });
+            console.error(error);
+            return new NextResponse('Error al obtener los enlaces desde la base de datos.', { status: 500 });
         }
     }
 
     // Manejar petición POST para crear un nuevo enlace
     if (request.method === 'POST') {
-        const { url } = request.body;
-        if (!url) {
-            return response.status(400).json({ error: 'La URL es requerida.' });
-        }
-
         try {
+            const { url } = await request.json();
+            if (!url) {
+                return new NextResponse('La URL es requerida.', { status: 400 });
+            }
+
             let id;
             let exists = true;
-            // Asegurarse de que el ID es único
             while(exists) {
                 id = generateShortId();
                 exists = await kv.exists(`link:${id}`);
             }
 
-            const newLink = {
-                id,
-                originalUrl: url,
-                clicks: 0,
-                createdAt: Date.now()
-            };
+            const newLink = { id, originalUrl: url, clicks: 0, createdAt: Date.now() };
             
             await kv.hset(`link:${id}`, newLink);
-            // Guardar en un set ordenado por fecha para fácil recuperación
             await kv.zadd('links_by_date', { score: newLink.createdAt, member: id });
 
-            return response.status(200).json({ id: newLink.id });
+            return NextResponse.json({ id: newLink.id });
         } catch (error) {
-            return response.status(500).json({ error: 'Error al crear el enlace.' });
+            console.error(error);
+            return new NextResponse('Error al crear el enlace en la base de datos.', { status: 500 });
         }
     }
 
-    // Si el método no es GET o POST
-    return response.status(405).json({ error: 'Método no permitido.' });
+    return new NextResponse('Método no permitido.', { status: 405 });
 }
+
